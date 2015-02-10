@@ -10,6 +10,23 @@ from slugify import slugify
 from werkzeug.utils import secure_filename
 
 INDUSTRIES = '046,047,005,006,058,025'
+
+INDUSTRIES_MINING = ','.join([
+    # companies that have broken the water pitcher
+    '046', # junior mining
+    '001', #integrated mines
+    '002', # metal mines
+    '057', # mining
+    '003', # non-base metal mining
+])
+
+INDUSTRIES_OIL= '047,005,006,058'
+
+# mining
+INDUSTRIES = INDUSTRIES_MINING
+OUTPUT_DIR = '/data/sedar/mining'
+
+
 TO_DATE = datetime.utcnow()
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
@@ -72,7 +89,7 @@ def download_document(form):
     file_name = form.split('/filings/', 1)[-1]
     filing_id, doc_id, rest = file_name.split('/', 2)
     rest = secure_filename(urllib.unquote(rest))
-    file_name = os.path.join('filings', filing_id, doc_id, rest)
+    file_name = os.path.join(OUTPUT_DIR, filing_id, doc_id, rest)
     if os.path.exists(file_name):
         return file_name
 
