@@ -27,7 +27,8 @@ INDUSTRIES = INDUSTRIES_MINING
 OUTPUT_DIR = '/data/sedar/mining'
 
 
-TO_DATE = datetime.utcnow()
+# we're only looking at older filings
+TO_DATE = datetime.utcnow() - timedelta(days=5*365)
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
 
