@@ -1,0 +1,4 @@
+werkzeug
+requests
+dataset
+psycopg2
