@@ -1,3 +1,5 @@
+
+import argparse
 import os
 
 import threading
@@ -196,5 +198,8 @@ def download_page(i):
             return
 
 
-
-load_filings()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mod', default=0)
+    PAGETARGET = lambda pagenum: pagenum % 3 == args.mod
+    load_filings()
