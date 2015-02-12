@@ -17,6 +17,7 @@ from slugify import slugify
 from werkzeug.utils import secure_filename
 
 THREADS=5
+STARTPAGE=347
 
 INDUSTRIES = '046,047,005,006,058,025'
 
@@ -141,7 +142,7 @@ def load_filings():
         td.start()
 
 
-    for i in count(1):
+    for i in count(STARTPAGE):
         pagequeue.put(i, block=True)
 
 def download_page(i):
