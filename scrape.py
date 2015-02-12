@@ -23,8 +23,11 @@ except ImportError:
 
 engine = dataset.connect(dburl)
 
-THREADS=5
-STARTPAGE=347
+THREADS=1
+STARTPAGE=384
+
+# after a threading fail, resort to 
+PAGETARGET = lambda pagenum: pagenum % 3 == 0
 
 INDUSTRIES = '046,047,005,006,058,025'
 
@@ -150,7 +153,8 @@ def load_filings():
 
 
     for i in count(STARTPAGE):
-        pagequeue.put(i, block=True)
+        if PAGETARGET(i):
+            pagequeue.put(i, block=True)
 
 def download_page(i):
         print('---handling page %s' % i)
