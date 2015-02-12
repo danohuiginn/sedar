@@ -25,7 +25,7 @@ except ImportError:
 
 engine = dataset.connect(dburl)
 
-THREADS=1
+THREADS=2
 STARTPAGE=384
 
 # after a threading fail, resort to 
@@ -149,14 +149,15 @@ def load_filings():
     # workers for company name
     pagequeue = Queue(maxsize=1)
     for workernum in range(THREADS):
+	print('starting page worker')
         td = threading.Thread(target=page_worker, args=(pagequeue,workernum))
         td.setDaemon(True)
         td.start()
 
 
     for i in count(STARTPAGE):
-        if PAGETARGET(i):
-            pagequeue.put(i, block=True)
+	if PAGETARGET(i):
+            download_page(i)
 
 def download_page(i):
         print('---handling page %s' % i)
@@ -200,6 +201,7 @@ def download_page(i):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mod', default=0)
+    parser.add_argument('--mod', type=int, default=0)
+    args = parser.parse_args()
     PAGETARGET = lambda pagenum: pagenum % 3 == args.mod
     load_filings()
