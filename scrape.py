@@ -94,6 +94,8 @@ def get_company(url):
     company.upsert(data, ['url'])
 
 
+
+
 def download_document(form):
     file_name = form.split('/filings/', 1)[-1]
     filing_id, doc_id, rest = file_name.split('/', 2)
@@ -123,14 +125,26 @@ def download_document(form):
 
     return file_name
 
+def page_worker(q, label):
+    while True:
+        print('%s waiting for task' % q)
+        page = q.get()
+        print('%s working on %s' % (q, page))
+        download_page(page)
+        q.task_done()
 
 def load_filings():
-    urlqueue = Queue(maxsize=1)
+    # workers for company name
+    pagequeue = Queue(maxsize=1)
     for workernum in range(THREADS):
-        td = threading.Thread(target=worker, args=(urlqueue,workernum), daemon=True)
+        td = threading.Thread(target=page_worker, args=(pagequeue,workernum), daemon=True)
         td.start()
 
+
     for i in count(1):
+        pagequeue.put(i, block=True)
+
+def download_page(i):
         print('---handling page %s' % i)
         page_hits = 0
         params = PARAMS.copy()
@@ -164,17 +178,11 @@ def load_filings():
                 'size': cells[5].text_content().strip()
             }
             filing.upsert(data, ['filing'])
-            urlqueue.put(data['company_url'], block=True)
+            get_company_data(url)
 
         if page_hits == 0:
             return
 
 
-def worker(urlqueue, workernum):
-    while True:
-        url = urlqueue.get()
-        print('worker %s starting to process %s' % (workernum, url))
-        get_company_data(url)
-        urlqueue.task_done()
 
 load_filings()
