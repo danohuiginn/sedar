@@ -1,4 +1,11 @@
 import os
+
+import threading
+try:
+    from queue import Queue
+except ImportError: #py2
+    from Queue import Queue
+
 import requests
 import dataset
 import urllib
@@ -9,12 +16,14 @@ from datetime import datetime, timedelta
 from slugify import slugify
 from werkzeug.utils import secure_filename
 
+THREADS=5
+
 INDUSTRIES = '046,047,005,006,058,025'
 
 INDUSTRIES_MINING = ','.join([
     # companies that have broken the water pitcher
     '046', # junior mining
-    '001', #integrated mines
+    '001', # integrated mines
     '002', # metal mines
     '057', # mining
     '003', # non-base metal mining
@@ -25,7 +34,6 @@ INDUSTRIES_OIL= '047,005,006,058'
 # mining
 INDUSTRIES = INDUSTRIES_MINING
 OUTPUT_DIR = '/data/sedar/mining'
-
 
 # we're only looking at older filings
 TO_DATE = datetime.utcnow() - timedelta(days=5*365)
@@ -82,7 +90,7 @@ def get_company(url):
         elif row.get('class') == 'rt' and key is not None:
             data[key] = row.text
             key = None
-        #print url, html.tostring(row)
+
     company.upsert(data, ['url'])
 
 
@@ -117,7 +125,13 @@ def download_document(form):
 
 
 def load_filings():
+    urlqueue = Queue(maxsize=1)
+    for workernum in range(THREADS):
+        td = threading.Thread(target=worker, args=(urlqueue,workernum), daemon=True)
+        td.start()
+
     for i in count(1):
+        print('---handling page %s' % i)
         page_hits = 0
         params = PARAMS.copy()
         params['page_no'] = i
@@ -150,10 +164,17 @@ def load_filings():
                 'size': cells[5].text_content().strip()
             }
             filing.upsert(data, ['filing'])
-            get_company(data['company_url'])
+            urlqueue.put(data['company_url'], block=True)
 
         if page_hits == 0:
             return
 
+
+def worker(urlqueue, workernum):
+    while True:
+        url = urlqueue.get()
+        print('worker %s starting to process %s' % (workernum, url))
+        get_company_data(url)
+        urlqueue.task_done()
 
 load_filings()
