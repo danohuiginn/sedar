@@ -138,7 +138,8 @@ def load_filings():
     # workers for company name
     pagequeue = Queue(maxsize=1)
     for workernum in range(THREADS):
-        td = threading.Thread(target=page_worker, args=(pagequeue,workernum), daemon=True)
+        td = threading.Thread(target=page_worker, args=(pagequeue,workernum))
+        td.setDaemon(True)
         td.start()
 
 
