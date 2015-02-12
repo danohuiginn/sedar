@@ -16,6 +16,13 @@ from datetime import datetime, timedelta
 from slugify import slugify
 from werkzeug.utils import secure_filename
 
+try:
+   from config import dburl
+except ImportError:
+   dburl = 'postgresql://localhost/sedar'
+
+engine = dataset.connect(dburl)
+
 THREADS=5
 STARTPAGE=347
 
@@ -59,7 +66,6 @@ PARAMS = {
 }
 
 print PARAMS
-engine = dataset.connect('postgresql://localhost/sedar')
 filing = engine['filing']
 company = engine['company']
 sess = {}
@@ -180,7 +186,7 @@ def download_page(i):
                 'size': cells[5].text_content().strip()
             }
             filing.upsert(data, ['filing'])
-            get_company_data(url)
+            get_company(data['company_url'])
 
         if page_hits == 0:
             return
