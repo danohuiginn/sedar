@@ -128,12 +128,17 @@ def download_document(form):
         return download_document(form)
 
     try:
-        os.makedirs(os.path.dirname(file_name))
+        dname = os.path.dirname(file_name)
+        os.makedirs(dname)
     except:
+        print('unable to make directory %s' % dname)
+        
+    try:
+        with open(file_name, 'wb') as fh:
+            fh.write(res.content)
+    except:
+        print('unable to write file %s' % file_name)
         pass
-
-    with open(file_name, 'wb') as fh:
-        fh.write(res.content)
 
     return file_name
 
