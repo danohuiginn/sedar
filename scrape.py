@@ -16,7 +16,7 @@ except ImportError:
 engine = dataset.connect(dburl)
 
 
-INDUSTRIES = '046,047,005,006,058,025'
+#INDUSTRIES = '046,047,005,006,058,025'
 
 INDUSTRIES_MINING = ','.join([
     # companies that have broken the water pitcher
@@ -34,14 +34,13 @@ INDUSTRIES = INDUSTRIES_MINING
 OUTPUT_DIR = '/data/sedar/mining_material_documents'
 
 TO_DATE = datetime.utcnow()
-FROM_DATE = TO_DATE - timedelta(days=10 * 365)
-FROM_DATE = TO_DATE - timedelta(days=10 * 365)
+FROM_DATE = TO_DATE - timedelta(days=1 * 365)
 
 SEARCH_PAGE = 'http://www.sedar.com/search/search_form_pc_en.htm'
 RESULT_PAGE = 'http://www.sedar.com/FindCompanyDocuments.do'
 PARAMS = {
     'lang': 'EN',
-    'page_no': 2,
+    'page_no': 35,
     'company_search': 'All (or type a name)',
     'document_selection': 0,
     'industry_group': INDUSTRIES,
@@ -51,7 +50,7 @@ PARAMS = {
     'ToDate': TO_DATE.strftime('%d'),
     'ToMonth': TO_DATE.strftime('%m'),
     'ToYear': TO_DATE.strftime('%Y'),
-    'Variable': 'Issuer'
+    'Variable': 'DocType'
 }
 
 print PARAMS
@@ -132,13 +131,13 @@ def should_download_this(filingtype):
    return False
 
 def load_filings():
-    for i in count(1):
+    for i in count(315, 1):
         page_hits = 0
         params = PARAMS.copy()
         params['page_no'] = i
+        print('on page %s' % i)
         res = requests.get(RESULT_PAGE, params=params)
         doc = html.fromstring(res.content)
-
         for row in doc.findall('.//tr'):
             cells = row.findall('.//td')
             if len(cells) < 6:
@@ -147,14 +146,14 @@ def load_filings():
             #print cells, html.tostring(row)
             if submit is None:
                 continue
-            page_hits += 1
             filing_id = submit.split('fileName=', 1)[-1]
             print 'Filing', [filing_id]
             form = urljoin(RESULT_PAGE, submit)
-
+            page_hits += 1
             filing_type = cells[3].text_content().strip()
             if not should_download_this(filing_type):
                continue
+
 
 
             file_name = download_document(form)
