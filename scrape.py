@@ -31,10 +31,10 @@ INDUSTRIES_OIL= '047,005,006,058'
 
 # mining
 INDUSTRIES = INDUSTRIES_MINING
-OUTPUT_DIR = '/data/sedar/mining_material_documents'
+OUTPUT_DIR = '/data/sedar/mining_material_documents_2014'
 
-TO_DATE = datetime.utcnow()
-FROM_DATE = TO_DATE - timedelta(days=1 * 365)
+TO_DATE = datetime.now() - timedelta(days=1 * 365)
+FROM_DATE = datetime(2014,1,1)
 
 SEARCH_PAGE = 'http://www.sedar.com/search/search_form_pc_en.htm'
 RESULT_PAGE = 'http://www.sedar.com/FindCompanyDocuments.do'
@@ -131,7 +131,10 @@ def should_download_this(filingtype):
    return False
 
 def load_filings():
-    for i in count(315, 1):
+    status = 'SCROLLING'
+    skiplength = 1
+    i = 1
+    while True:
         page_hits = 0
         params = PARAMS.copy()
         params['page_no'] = i
@@ -154,7 +157,11 @@ def load_filings():
             if not should_download_this(filing_type):
                continue
 
-
+            if status == 'SCROLLING':
+               status = 'DOWNLOADING'
+               print('\n\n\nFOUND FIRST USEFUL DOC\n\n')
+               # we've hit the first relevant docs; scroll back to the start
+               i -= skiplength
 
             file_name = download_document(form)
             data = {
@@ -172,6 +179,11 @@ def load_filings():
             filing.upsert(data, ['filing'])
             get_company(data['company_url'])
             print('downloaded filing')
+
+        if status == 'SCROLLING':
+           i += skiplength
+        else:
+           i += 1
 
         if page_hits == 0:
             return
