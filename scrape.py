@@ -9,6 +9,13 @@ from datetime import datetime, timedelta
 from slugify import slugify
 from werkzeug.utils import secure_filename
 
+try:
+   from config import dburl
+except ImportError:
+   dburl = 'postgresql://localhost/sedar'
+engine = dataset.connect(dburl)
+
+
 INDUSTRIES = '046,047,005,006,058,025'
 
 INDUSTRIES_MINING = ','.join([
@@ -24,11 +31,9 @@ INDUSTRIES_OIL= '047,005,006,058'
 
 # mining
 INDUSTRIES = INDUSTRIES_MINING
-OUTPUT_DIR = '/data/sedar/mining'
+OUTPUT_DIR = '/data/sedar/mining_material_documents'
 
-
-# we're only looking at older filings
-TO_DATE = datetime.utcnow() - timedelta(days=5*365)
+TO_DATE = datetime.utcnow()
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
 FROM_DATE = TO_DATE - timedelta(days=10 * 365)
 
@@ -50,7 +55,6 @@ PARAMS = {
 }
 
 print PARAMS
-engine = dataset.connect('postgresql://localhost/sedar')
 filing = engine['filing']
 company = engine['company']
 sess = {}
@@ -115,6 +119,17 @@ def download_document(form):
 
     return file_name
 
+def should_download_this(filingtype):
+   '''
+   only download docs that are material filings, material documents, or similar
+   '''
+   ftype = filingtype.lower()
+   if 'material' in ftype:
+      if ('document' in ftype) or ('contract' in ftype) or ('incorporated by reference' in ftype):
+         print('filing to download: %s' % ftype)
+         return True
+   print('filing not to download: %s' % ftype)
+   return False
 
 def load_filings():
     for i in count(1):
@@ -136,6 +151,12 @@ def load_filings():
             filing_id = submit.split('fileName=', 1)[-1]
             print 'Filing', [filing_id]
             form = urljoin(RESULT_PAGE, submit)
+
+            filing_type = cells[3].text_content().strip()
+            if not should_download_this(filing_type):
+               continue
+
+
             file_name = download_document(form)
             data = {
                 'filing': filing_id,
@@ -151,6 +172,7 @@ def load_filings():
             }
             filing.upsert(data, ['filing'])
             get_company(data['company_url'])
+            print('downloaded filing')
 
         if page_hits == 0:
             return
