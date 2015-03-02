@@ -1,13 +1,5 @@
-
-import argparse
+import copy
 import os
-
-import threading
-try:
-    from queue import Queue
-except ImportError: #py2
-    from Queue import Queue
-
 import requests
 import dataset
 import urllib
@@ -22,21 +14,15 @@ try:
    from config import dburl
 except ImportError:
    dburl = 'postgresql://localhost/sedar'
-
 engine = dataset.connect(dburl)
 
-THREADS=2
-STARTPAGE=384
 
-# after a threading fail, resort to 
-PAGETARGET = lambda pagenum: pagenum % 3 == 0
-
-INDUSTRIES = '046,047,005,006,058,025'
+#INDUSTRIES = '046,047,005,006,058,025'
 
 INDUSTRIES_MINING = ','.join([
     # companies that have broken the water pitcher
     '046', # junior mining
-    '001', # integrated mines
+    '001', #integrated mines
     '002', # metal mines
     '057', # mining
     '003', # non-base metal mining
@@ -46,18 +32,16 @@ INDUSTRIES_OIL= '047,005,006,058'
 
 # mining
 INDUSTRIES = INDUSTRIES_MINING
-OUTPUT_DIR = '/data/sedar/mining'
+OUTPUT_DIR = '/data/sedar/mining_material_documents_2013'
 
-# we're only looking at older filings
-TO_DATE = datetime.utcnow() - timedelta(days=5*365)
-FROM_DATE = TO_DATE - timedelta(days=10 * 365)
-FROM_DATE = TO_DATE - timedelta(days=10 * 365)
+TO_DATE = datetime(2014,1,1)
+FROM_DATE = datetime(2013,1,1)
 
 SEARCH_PAGE = 'http://www.sedar.com/search/search_form_pc_en.htm'
 RESULT_PAGE = 'http://www.sedar.com/FindCompanyDocuments.do'
 PARAMS = {
     'lang': 'EN',
-    'page_no': 2,
+    'page_no': 35,
     'company_search': 'All (or type a name)',
     'document_selection': 0,
     'industry_group': INDUSTRIES,
@@ -67,12 +51,33 @@ PARAMS = {
     'ToDate': TO_DATE.strftime('%d'),
     'ToMonth': TO_DATE.strftime('%m'),
     'ToYear': TO_DATE.strftime('%Y'),
-    'Variable': 'Issuer'
+    'Variable': 'DocType'
 }
+
+def scrape_many_years(last,first):
+   global OUTPUT_DIR
+   for year in range(last, first, -1):
+      OUTPUT_DIR = '/data/sedar/mining_material_documents_%s' % year
+      start = datetime(year,1,1)
+      end = datetime(year+1,1,1)
+      params = copy.copy(PARAMS)
+      params.update({
+            'FromDate': start.strftime('%d'),
+            'FromMonth': start.strftime('%m'),
+            'FromYear': start.strftime('%Y'),
+            'ToDate': end.strftime('%d'),
+            'ToMonth': end.strftime('%m'),
+            'ToYear': end.strftime('%Y'),
+            })
+      print('---scraping year %s' % year)
+      print(params)
+      load_filings(params)      
+   
 
 print PARAMS
 filing = engine['filing']
 company = engine['company']
+filing_index = engine['filing_index']
 sess = {}
 
 
@@ -102,10 +107,8 @@ def get_company(url):
         elif row.get('class') == 'rt' and key is not None:
             data[key] = row.text
             key = None
-
+        #print url, html.tostring(row)
     company.upsert(data, ['url'])
-
-
 
 
 def download_document(form):
@@ -137,36 +140,29 @@ def download_document(form):
 
     return file_name
 
-def page_worker(q, label):
+def should_download_this(filingtype):
+   '''
+   only download docs that are material filings, material documents, or similar
+   '''
+   ftype = filingtype.lower()
+   if 'material' in ftype:
+      if ('document' in ftype) or ('contract' in ftype) or ('incorporated by reference' in ftype):
+         print('filing to download: %s' % ftype)
+         return True
+   print('filing not to download: %s' % ftype)
+   return False
+
+def load_filings(global_params):
+    status = 'SCROLLING'
+    skiplength = 1
+    i = 1
     while True:
-        print('%s waiting for task' % q)
-        page = q.get()
-        print('%s working on %s' % (q, page))
-        download_page(page)
-        q.task_done()
-
-def load_filings():
-    # workers for company name
-    pagequeue = Queue(maxsize=1)
-    for workernum in range(THREADS):
-	print('starting page worker')
-        td = threading.Thread(target=page_worker, args=(pagequeue,workernum))
-        td.setDaemon(True)
-        td.start()
-
-
-    for i in count(STARTPAGE):
-	if PAGETARGET(i):
-            download_page(i)
-
-def download_page(i):
-        print('---handling page %s' % i)
         page_hits = 0
-        params = PARAMS.copy()
+        params = global_params.copy()
         params['page_no'] = i
+        print('on page %s' % i)
         res = requests.get(RESULT_PAGE, params=params)
         doc = html.fromstring(res.content)
-
         for row in doc.findall('.//tr'):
             cells = row.findall('.//td')
             if len(cells) < 6:
@@ -175,10 +171,32 @@ def download_page(i):
             #print cells, html.tostring(row)
             if submit is None:
                 continue
-            page_hits += 1
             filing_id = submit.split('fileName=', 1)[-1]
             print 'Filing', [filing_id]
             form = urljoin(RESULT_PAGE, submit)
+            page_hits += 1
+            filing_type = cells[3].text_content().strip()
+            data = {
+                'filing': filing_id,
+                'company': cells[0].text_content().strip(),
+                'company_url': urljoin(RESULT_PAGE, cells[0].find('./a').get('href')),
+                'date': cells[1].text_content().strip(),
+                'time': cells[2].text_content().strip(),
+                'type': cells[3].text_content().strip(),
+                'tos_form': form,
+                'format': cells[4].text_content().strip(),
+                'size': cells[5].text_content().strip()
+            }
+            filing_index.upsert(data, ['filing'])            
+            if not should_download_this(filing_type):
+               continue
+
+            if status == 'SCROLLING':
+               status = 'DOWNLOADING'
+               print('\n\n\nFOUND FIRST USEFUL DOC\n\n')
+               # we've hit the first relevant docs; scroll back to the start
+               i -= skiplength
+
             file_name = download_document(form)
             data = {
                 'filing': filing_id,
@@ -194,14 +212,16 @@ def download_page(i):
             }
             filing.upsert(data, ['filing'])
             get_company(data['company_url'])
+            print('downloaded filing')
+
+        if status == 'SCROLLING':
+           i += skiplength
+        else:
+           i += 1
 
         if page_hits == 0:
             return
 
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mod', type=int, default=0)
-    args = parser.parse_args()
-    PAGETARGET = lambda pagenum: pagenum % 3 == args.mod
-    load_filings()
+   scrape_many_years(2000,1990)
+
