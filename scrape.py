@@ -1,3 +1,4 @@
+import copy
 import os
 import requests
 import dataset
@@ -31,10 +32,10 @@ INDUSTRIES_OIL= '047,005,006,058'
 
 # mining
 INDUSTRIES = INDUSTRIES_MINING
-OUTPUT_DIR = '/data/sedar/mining_material_documents_2014'
+OUTPUT_DIR = '/data/sedar/mining_material_documents_2013'
 
-TO_DATE = datetime.now() - timedelta(days=1 * 365)
-FROM_DATE = datetime(2014,1,1)
+TO_DATE = datetime(2014,1,1)
+FROM_DATE = datetime(2013,1,1)
 
 SEARCH_PAGE = 'http://www.sedar.com/search/search_form_pc_en.htm'
 RESULT_PAGE = 'http://www.sedar.com/FindCompanyDocuments.do'
@@ -53,9 +54,30 @@ PARAMS = {
     'Variable': 'DocType'
 }
 
+def scrape_many_years(last,first):
+   global OUTPUT_DIR
+   for year in range(last, first, -1):
+      OUTPUT_DIR = '/data/sedar/mining_material_documents_%s' % year
+      start = datetime(year,1,1)
+      end = datetime(year+1,1,1)
+      params = copy.copy(PARAMS)
+      params.update({
+            'FromDate': start.strftime('%d'),
+            'FromMonth': start.strftime('%m'),
+            'FromYear': start.strftime('%Y'),
+            'ToDate': end.strftime('%d'),
+            'ToMonth': end.strftime('%m'),
+            'ToYear': end.strftime('%Y'),
+            })
+      print('---scraping year %s' % year)
+      print(params)
+      load_filings(params)      
+   
+
 print PARAMS
 filing = engine['filing']
 company = engine['company']
+filing_index = engine['filing_index']
 sess = {}
 
 
@@ -130,13 +152,13 @@ def should_download_this(filingtype):
    print('filing not to download: %s' % ftype)
    return False
 
-def load_filings():
+def load_filings(global_params):
     status = 'SCROLLING'
     skiplength = 1
     i = 1
     while True:
         page_hits = 0
-        params = PARAMS.copy()
+        params = global_params.copy()
         params['page_no'] = i
         print('on page %s' % i)
         res = requests.get(RESULT_PAGE, params=params)
@@ -154,6 +176,18 @@ def load_filings():
             form = urljoin(RESULT_PAGE, submit)
             page_hits += 1
             filing_type = cells[3].text_content().strip()
+            data = {
+                'filing': filing_id,
+                'company': cells[0].text_content().strip(),
+                'company_url': urljoin(RESULT_PAGE, cells[0].find('./a').get('href')),
+                'date': cells[1].text_content().strip(),
+                'time': cells[2].text_content().strip(),
+                'type': cells[3].text_content().strip(),
+                'tos_form': form,
+                'format': cells[4].text_content().strip(),
+                'size': cells[5].text_content().strip()
+            }
+            filing_index.upsert(data, ['filing'])            
             if not should_download_this(filing_type):
                continue
 
@@ -188,5 +222,6 @@ def load_filings():
         if page_hits == 0:
             return
 
+if __name__ == '__main__':
+   scrape_many_years(2000,1990)
 
-load_filings()
