@@ -1,3 +1,4 @@
+import argparse
 import copy
 import os
 import requests
@@ -16,8 +17,6 @@ except ImportError:
    dburl = 'postgresql://localhost/sedar'
 engine = dataset.connect(dburl)
 
-
-#INDUSTRIES = '046,047,005,006,058,025'
 
 INDUSTRIES_MINING = ','.join([
     # companies that have broken the water pitcher
@@ -54,27 +53,10 @@ PARAMS = {
     'Variable': 'DocType'
 }
 
-def scrape_many_years(last,first):
-   global OUTPUT_DIR
-   for year in range(last, first, -1):
-      OUTPUT_DIR = '/data/sedar/mining_material_documents_%s' % year
-      start = datetime(year,1,1)
-      end = datetime(year+1,1,1)
-      params = copy.copy(PARAMS)
-      params.update({
-            'FromDate': start.strftime('%d'),
-            'FromMonth': start.strftime('%m'),
-            'FromYear': start.strftime('%Y'),
-            'ToDate': end.strftime('%d'),
-            'ToMonth': end.strftime('%m'),
-            'ToYear': end.strftime('%Y'),
-            })
-      print('---scraping year %s' % year)
-      print(params)
-      load_filings(params)      
    
 
 print PARAMS
+
 filing = engine['filing']
 company = engine['company']
 filing_index = engine['filing_index']
@@ -98,7 +80,10 @@ def get_company(url):
     res = requests.get(url)
     doc = html.fromstring(res.content)
     content = doc.find('.//div[@id="content"]')
-    data = {'url': url, 'name': content.findtext('.//td/font/strong')}
+    data = {
+       'url': url,
+       'name': content.findtext('.//td/font/strong'),
+       'industry': args.industry}
     print 'Company', [data['name']]
     key = None
     for row in content.findall('.//td'):
@@ -152,7 +137,7 @@ def should_download_this(filingtype):
    print('filing not to download: %s' % ftype)
    return False
 
-def load_filings(global_params):
+def load_filings(global_params, args):
     status = 'SCROLLING'
     skiplength = 1
     i = 1
@@ -177,6 +162,7 @@ def load_filings(global_params):
             page_hits += 1
             filing_type = cells[3].text_content().strip()
             data = {
+                'industry': args.industry,
                 'filing': filing_id,
                 'company': cells[0].text_content().strip(),
                 'company_url': urljoin(RESULT_PAGE, cells[0].find('./a').get('href')),
@@ -199,6 +185,7 @@ def load_filings(global_params):
 
             file_name = download_document(form)
             data = {
+                'industry': args.industry,
                 'filing': filing_id,
                 'file_name': file_name,
                 'company': cells[0].text_content().strip(),
@@ -211,7 +198,7 @@ def load_filings(global_params):
                 'size': cells[5].text_content().strip()
             }
             filing.upsert(data, ['filing'])
-            get_company(data['company_url'])
+            get_company(data['company_url'], args)
             print('downloaded filing')
 
         if status == 'SCROLLING':
@@ -222,6 +209,43 @@ def load_filings(global_params):
         if page_hits == 0:
             return
 
+def scrape_many_years(args):
+   global OUTPUT_DIR, INDUSTRIES
+   
+   if args.industry == 'oil':
+      INDUSTRIES = INDUSTRIES_OIL
+   elif args.industry == 'mining':
+      INDUSTRIES = INDUSTRIES_MINING
+   else:
+      raise
+
+   for year in range(args.endyear, args.startyear, -1):
+      OUTPUT_DIR = '/data/sedar/%s_material_documents_%s' % (args.industry, year)
+      start = datetime(year,1,1)
+      end = datetime(year+1,1,1)
+      params = copy.copy(PARAMS)
+      params.update({
+
+            'industry_group': INDUSTRIES,
+
+            'FromDate': start.strftime('%d'),
+            'FromMonth': start.strftime('%m'),
+            'FromYear': start.strftime('%Y'),
+            
+            'ToDate': end.strftime('%d'),
+            'ToMonth': end.strftime('%m'),
+            'ToYear': end.strftime('%Y'),
+
+            })
+      print('---scraping year %s' % year)
+      print(params)
+      load_filings(params, args)      
+
 if __name__ == '__main__':
-   scrape_many_years(2000,1990)
+   parser = argparse.ArgumentParser()
+   parser.add_argument('--startyear', type=int, default=2000, help="earliest year to scrape")
+   parser.add_argument('--endyear', type=int, default=2014, help="latest year to scrape")
+   parser.add_argument('--industry', choices=['oil', 'mining'])
+   args = parser.parse_args()
+   scrape_many_years(args)
 
