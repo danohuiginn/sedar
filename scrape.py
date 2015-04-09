@@ -74,7 +74,7 @@ def get_industries():
         print opt.get('value'), ' -> ', opt.text_content().strip()
 
 
-def get_company(url):
+def get_company(url, args):
     if company.find_one(url=url):
         return
     res = requests.get(url)
@@ -140,7 +140,7 @@ def should_download_this(filingtype):
 def load_filings(global_params, args):
     status = 'SCROLLING'
     skiplength = 1
-    i = 1
+    i = args.startpage
     while True:
         page_hits = 0
         params = global_params.copy()
@@ -246,6 +246,7 @@ if __name__ == '__main__':
    parser.add_argument('--startyear', type=int, default=2000, help="earliest year to scrape")
    parser.add_argument('--endyear', type=int, default=2014, help="latest year to scrape")
    parser.add_argument('--industry', choices=['oil', 'mining'])
+   parser.add_argument('--startpage', type=int, default=1, help="page to start on. Use this to skip listings you know are non-material")
    args = parser.parse_args()
    scrape_many_years(args)
 
